@@ -119,6 +119,27 @@ router.get("/pending-processing", requireRole("ACCOUNTANT", "ADMIN"), async (_re
   res.json(requests);
 });
 
+router.get("/all", requireRole("ACCOUNTANT", "ADMIN"), async (_req, res) => {
+  const requests = await prisma.fundRequest.findMany({
+    select: {
+      ...fundRequestSelect,
+      requester: { select: { id: true, name: true, email: true } },
+      approvalEvents: {
+        select: {
+          id: true,
+          action: true,
+          comment: true,
+          createdAt: true,
+          actor: { select: { id: true, name: true, role: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(requests);
+});
+
 const recordsQuerySchema = z.object({
   q: z.string().optional(),
   status: z.enum(["PENDING_MANAGER", "PENDING_ACCOUNTANT", "PAID", "REJECTED_BY_MANAGER", "REJECTED_BY_ACCOUNTANT"]).optional(),
