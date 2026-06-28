@@ -14,10 +14,20 @@ const cookieOptions = {
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
+router.get("/managers", async (_req, res) => {
+  const managers = await prisma.user.findMany({
+    where: { role: "MANAGER" },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  res.json(managers);
+});
+
 const signupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
+  managerId: z.string().optional(),
 });
 
 router.post("/signup", async (req, res) => {
@@ -25,16 +35,23 @@ router.post("/signup", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
-  const { name, email, password } = parsed.data;
+  const { name, email, password, managerId } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return res.status(409).json({ error: "Email already registered" });
   }
 
+  if (managerId) {
+    const manager = await prisma.user.findUnique({ where: { id: managerId } });
+    if (!manager || manager.role !== "MANAGER") {
+      return res.status(400).json({ error: "Selected manager is not valid" });
+    }
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, role: "STAFF" },
+    data: { name, email, passwordHash, role: "STAFF", managerId },
   });
 
   const token = signToken({ userId: user.id, role: user.role });
