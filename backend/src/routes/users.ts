@@ -17,6 +17,7 @@ router.get("/", async (_req, res) => {
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
+  email: z.string().email().optional(),
   role: z.enum(["STAFF", "MANAGER", "ACCOUNTANT", "ADMIN"]).optional(),
   managerId: z.string().nullable().optional(),
 });
@@ -36,6 +37,13 @@ router.patch("/:id", async (req, res) => {
     const manager = await prisma.user.findUnique({ where: { id: parsed.data.managerId } });
     if (!manager) {
       return res.status(400).json({ error: "managerId does not refer to an existing user" });
+    }
+  }
+
+  if (parsed.data.email) {
+    const existing = await prisma.user.findUnique({ where: { email: parsed.data.email } });
+    if (existing && existing.id !== id) {
+      return res.status(409).json({ error: "Email already in use by another user" });
     }
   }
 
