@@ -32,7 +32,6 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <img src="/logo.png" alt={ORG_NAME} className="auth-logo-img" />
         <h1>Welcome to {ORG_NAME}</h1>
         <p className="auth-sub">Sign in to access your ERP dashboard</p>
 

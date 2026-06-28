@@ -16,6 +16,7 @@ router.get("/", async (_req, res) => {
 });
 
 const updateSchema = z.object({
+  name: z.string().min(1).optional(),
   role: z.enum(["STAFF", "MANAGER", "ACCOUNTANT", "ADMIN"]).optional(),
   managerId: z.string().nullable().optional(),
 });

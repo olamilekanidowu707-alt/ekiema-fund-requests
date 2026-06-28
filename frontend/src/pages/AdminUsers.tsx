@@ -16,11 +16,13 @@ export default function AdminUsers() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [nameDrafts, setNameDrafts] = useState<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
     const data = await api.get<AdminUser[]>("/users");
     setUsers(data);
+    setNameDrafts(Object.fromEntries(data.map((u) => [u.id, u.name])));
     setLoading(false);
   }
 
@@ -48,6 +50,18 @@ export default function AdminUsers() {
     }
   }
 
+  async function updateName(id: string, name: string) {
+    const original = users.find((u) => u.id === id)?.name;
+    if (!name.trim() || name === original) return;
+    setSavingId(id);
+    try {
+      await api.patch(`/users/${id}`, { name: name.trim() });
+      await load();
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   if (loading) return <div className="page">Loading...</div>;
 
   return (
@@ -65,7 +79,15 @@ export default function AdminUsers() {
         <tbody>
           {users.map((u) => (
             <tr key={u.id}>
-              <td>{u.name}</td>
+              <td>
+                <input
+                  value={nameDrafts[u.id] ?? u.name}
+                  disabled={savingId === u.id}
+                  onChange={(e) => setNameDrafts({ ...nameDrafts, [u.id]: e.target.value })}
+                  onBlur={(e) => updateName(u.id, e.target.value)}
+                  style={{ width: 140 }}
+                />
+              </td>
               <td>{u.email}</td>
               <td>
                 <select
