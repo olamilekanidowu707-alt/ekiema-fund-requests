@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  STAFF
+  MANAGER
+  ACCOUNTANT
+  ADMIN
+}
+
+enum FundRequestStatus {
+  PENDING_MANAGER
+  PENDING_ACCOUNTANT
+  PAID
+  REJECTED_BY_MANAGER
+  REJECTED_BY_ACCOUNTANT
+}
+
+enum ApprovalAction {
+  SUBMITTED
+  MANAGER_APPROVED
+  MANAGER_REJECTED
+  ACCOUNTANT_PAID
+  ACCOUNTANT_REJECTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(STAFF)
+  managerId    String?
+  manager      User?    @relation("ManagerToReports", fields: [managerId], references: [id])
+  reports      User[]   @relation("ManagerToReports")
+  createdAt    DateTime @default(now())
+
+  fundRequests    FundRequest[]    @relation("Requester")
+  approvalEvents  ApprovalEvent[]
+}
+
+model FundRequest {
+  id          String            @id @default(cuid())
+  requesterId String
+  requester   User              @relation("Requester", fields: [requesterId], references: [id])
+  amount      Decimal           @db.Decimal(14, 2)
+  currency    String            @default("NGN")
+  purpose     String
+  description String?
+  status      FundRequestStatus @default(PENDING_MANAGER)
+  managerId   String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  approvalEvents ApprovalEvent[]
+}
+
+model ApprovalEvent {
+  id            String         @id @default(cuid())
+  fundRequestId String
+  fundRequest   FundRequest    @relation(fields: [fundRequestId], references: [id])
+  actorId       String
+  actor         User           @relation(fields: [actorId], references: [id])
+  action        ApprovalAction
+  comment       String?
+  createdAt     DateTime       @default(now())
+}
