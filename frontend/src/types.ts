@@ -13,6 +13,11 @@ export interface FundRequest {
   currency: string;
   purpose: string;
   description: string | null;
+  bankName: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  documentName: string | null;
+  documentType: string | null;
   status: FundRequestStatus;
   managerId: string | null;
   createdAt: string;

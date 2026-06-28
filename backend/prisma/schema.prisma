@@ -53,6 +53,12 @@ model FundRequest {
   currency    String            @default("NGN")
   purpose     String
   description String?
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+  documentName  String?
+  documentType  String?
+  documentData  Bytes?
   status      FundRequestStatus @default(PENDING_MANAGER)
   managerId   String?
   createdAt   DateTime          @default(now())

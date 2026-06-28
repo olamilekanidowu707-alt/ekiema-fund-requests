@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api } from "../api/client";
+import { api, API_BASE } from "../api/client";
 import { FundRequestDetail } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
 
@@ -22,6 +22,8 @@ export default function RequestDetail() {
   if (loading) return <div className="page">Loading...</div>;
   if (error) return <div className="page error">{error}</div>;
   if (!request) return null;
+
+  const hasBankDetails = request.bankName || request.accountNumber || request.accountName;
 
   return (
     <div className="page">
@@ -45,6 +47,40 @@ export default function RequestDetail() {
           <strong>Status:</strong> <StatusBadge status={request.status} />
         </p>
       </div>
+
+      {hasBankDetails && (
+        <div className="card">
+          <p className="section-title" style={{ marginBottom: 8 }}>
+            Bank Details
+          </p>
+          {request.bankName && (
+            <p>
+              <strong>Bank Name:</strong> {request.bankName}
+            </p>
+          )}
+          {request.accountNumber && (
+            <p>
+              <strong>Account Number:</strong> {request.accountNumber}
+            </p>
+          )}
+          {request.accountName && (
+            <p>
+              <strong>Account Name:</strong> {request.accountName}
+            </p>
+          )}
+        </div>
+      )}
+
+      {request.documentName && (
+        <div className="card">
+          <p className="section-title" style={{ marginBottom: 8 }}>
+            Supporting Document
+          </p>
+          <a href={`${API_BASE}/fund-requests/${request.id}/document`} target="_blank" rel="noreferrer">
+            {request.documentName}
+          </a>
+        </div>
+      )}
 
       <h3>History</h3>
       <ul>

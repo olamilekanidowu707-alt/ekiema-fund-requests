@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { FundRequest } from "../types";
@@ -10,8 +10,12 @@ export default function StaffDashboard() {
   const [amount, setAmount] = useState("");
   const [purpose, setPurpose] = useState("");
   const [description, setDescription] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [accountNumber, setAccountNumber] = useState("");
+  const [accountName, setAccountName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setLoading(true);
@@ -29,14 +33,24 @@ export default function StaffDashboard() {
     setError(null);
     setSubmitting(true);
     try {
-      await api.post("/fund-requests", {
-        amount: Number(amount),
-        purpose,
-        description: description || undefined,
-      });
+      const formData = new FormData();
+      formData.set("amount", amount);
+      formData.set("purpose", purpose);
+      if (description) formData.set("description", description);
+      if (bankName) formData.set("bankName", bankName);
+      if (accountNumber) formData.set("accountNumber", accountNumber);
+      if (accountName) formData.set("accountName", accountName);
+      const file = fileInputRef.current?.files?.[0];
+      if (file) formData.set("document", file);
+
+      await api.post("/fund-requests", formData);
       setAmount("");
       setPurpose("");
       setDescription("");
+      setBankName("");
+      setAccountNumber("");
+      setAccountName("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to submit request");
@@ -101,6 +115,41 @@ export default function StaffDashboard() {
           <div className="total-bar">
             <span>Total</span>
             <span>NGN {amount ? Number(amount).toFixed(2) : "0.00"}</span>
+          </div>
+        </div>
+
+        <div className="section">
+          <p className="section-title">Bank Details</p>
+          <p className="section-sub">Provide the account funds should be paid into</p>
+
+          <div className="field">
+            <label>Bank Name</label>
+            <input placeholder="e.g. First Bank" value={bankName} onChange={(e) => setBankName(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Account Number</label>
+            <input
+              placeholder="0123456789"
+              value={accountNumber}
+              onChange={(e) => setAccountNumber(e.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Account Name</label>
+            <input
+              placeholder="Account holder name"
+              value={accountName}
+              onChange={(e) => setAccountName(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="section">
+          <p className="section-title">Supporting Document</p>
+          <p className="section-sub">Attach an invoice, receipt, or other supporting document (optional, max 8MB)</p>
+
+          <div className="field">
+            <input type="file" ref={fileInputRef} accept=".pdf,.png,.jpg,.jpeg" />
           </div>
         </div>
 

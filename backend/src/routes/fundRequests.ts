@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Request, Router } from "express";
+import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
@@ -7,50 +8,94 @@ const router = Router();
 
 router.use(requireAuth);
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+// documentData (the raw file bytes) is intentionally excluded from every
+// response below — it's only ever streamed back via the dedicated
+// /:id/document endpoint, otherwise every list response would carry full
+// file payloads.
+const fundRequestSelect = {
+  id: true,
+  requesterId: true,
+  amount: true,
+  currency: true,
+  purpose: true,
+  description: true,
+  bankName: true,
+  accountNumber: true,
+  accountName: true,
+  documentName: true,
+  documentType: true,
+  status: true,
+  managerId: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
 const createSchema = z.object({
-  amount: z.number().positive(),
+  amount: z.coerce.number().positive(),
   currency: z.string().min(1).default("NGN"),
   purpose: z.string().min(1),
   description: z.string().optional(),
+  bankName: z.string().optional(),
+  accountNumber: z.string().optional(),
+  accountName: z.string().optional(),
 });
 
-router.post("/", requireRole("STAFF", "MANAGER", "ACCOUNTANT", "ADMIN"), async (req, res) => {
-  const parsed = createSchema.safeParse(req.body);
-  if (!parsed.success) {
-    return res.status(400).json({ error: parsed.error.flatten() });
-  }
+router.post(
+  "/",
+  requireRole("STAFF", "MANAGER", "ACCOUNTANT", "ADMIN"),
+  upload.single("document"),
+  async (req, res) => {
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.flatten() });
+    }
 
-  const requester = await prisma.user.findUnique({ where: { id: req.auth!.userId } });
-  if (!requester) {
-    return res.status(404).json({ error: "User not found" });
-  }
-  if (!requester.managerId) {
-    return res.status(400).json({ error: "You have no assigned line manager. Ask an admin to set one before submitting requests." });
-  }
+    const requester = await prisma.user.findUnique({ where: { id: req.auth!.userId } });
+    if (!requester) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    if (!requester.managerId) {
+      return res.status(400).json({ error: "You have no assigned line manager. Ask an admin to set one before submitting requests." });
+    }
 
-  const { amount, currency, purpose, description } = parsed.data;
+    const { amount, currency, purpose, description, bankName, accountNumber, accountName } = parsed.data;
+    const file = req.file;
 
-  const fundRequest = await prisma.fundRequest.create({
-    data: {
-      requesterId: requester.id,
-      managerId: requester.managerId,
-      amount,
-      currency,
-      purpose,
-      description,
-      status: "PENDING_MANAGER",
-      approvalEvents: {
-        create: { actorId: requester.id, action: "SUBMITTED" },
+    const fundRequest = await prisma.fundRequest.create({
+      data: {
+        requesterId: requester.id,
+        managerId: requester.managerId,
+        amount,
+        currency,
+        purpose,
+        description,
+        bankName,
+        accountNumber,
+        accountName,
+        documentName: file?.originalname,
+        documentType: file?.mimetype,
+        documentData: file?.buffer,
+        status: "PENDING_MANAGER",
+        approvalEvents: {
+          create: { actorId: requester.id, action: "SUBMITTED" },
+        },
       },
-    },
-  });
+      select: fundRequestSelect,
+    });
 
-  res.status(201).json(fundRequest);
-});
+    res.status(201).json(fundRequest);
+  }
+);
 
 router.get("/mine", async (req, res) => {
   const requests = await prisma.fundRequest.findMany({
     where: { requesterId: req.auth!.userId },
+    select: fundRequestSelect,
     orderBy: { createdAt: "desc" },
   });
   res.json(requests);
@@ -59,7 +104,7 @@ router.get("/mine", async (req, res) => {
 router.get("/pending-approval", requireRole("MANAGER", "ADMIN"), async (req, res) => {
   const requests = await prisma.fundRequest.findMany({
     where: { managerId: req.auth!.userId, status: "PENDING_MANAGER" },
-    include: { requester: { select: { id: true, name: true, email: true } } },
+    select: { ...fundRequestSelect, requester: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
   res.json(requests);
@@ -68,7 +113,7 @@ router.get("/pending-approval", requireRole("MANAGER", "ADMIN"), async (req, res
 router.get("/pending-processing", requireRole("ACCOUNTANT", "ADMIN"), async (_req, res) => {
   const requests = await prisma.fundRequest.findMany({
     where: { status: "PENDING_ACCOUNTANT" },
-    include: { requester: { select: { id: true, name: true, email: true } } },
+    select: { ...fundRequestSelect, requester: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "asc" },
   });
   res.json(requests);
@@ -115,19 +160,42 @@ router.get("/records", async (req, res) => {
 
   const requests = await prisma.fundRequest.findMany({
     where,
-    include: { requester: { select: { id: true, name: true, email: true } } },
+    select: { ...fundRequestSelect, requester: { select: { id: true, name: true, email: true } } },
     orderBy: { createdAt: "desc" },
   });
   res.json(requests);
 });
 
+async function loadAuthorizedRequest(req: Request) {
+  const fundRequest = await prisma.fundRequest.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, requesterId: true, managerId: true, documentName: true, documentType: true, documentData: true },
+  });
+  if (!fundRequest) return null;
+
+  const { userId, role } = req.auth!;
+  const isOwner = fundRequest.requesterId === userId;
+  const isAssignedManager = fundRequest.managerId === userId;
+  const isFinance = role === "ACCOUNTANT" || role === "ADMIN";
+  if (!isOwner && !isAssignedManager && !isFinance) return "forbidden";
+
+  return fundRequest;
+}
+
 router.get("/:id", async (req, res) => {
   const fundRequest = await prisma.fundRequest.findUnique({
     where: { id: req.params.id },
-    include: {
+    select: {
+      ...fundRequestSelect,
       requester: { select: { id: true, name: true, email: true } },
       approvalEvents: {
-        include: { actor: { select: { id: true, name: true, role: true } } },
+        select: {
+          id: true,
+          action: true,
+          comment: true,
+          createdAt: true,
+          actor: { select: { id: true, name: true, role: true } },
+        },
         orderBy: { createdAt: "asc" },
       },
     },
@@ -145,6 +213,23 @@ router.get("/:id", async (req, res) => {
   }
 
   res.json(fundRequest);
+});
+
+router.get("/:id/document", async (req, res) => {
+  const result = await loadAuthorizedRequest(req);
+  if (!result) {
+    return res.status(404).json({ error: "Not found" });
+  }
+  if (result === "forbidden") {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  if (!result.documentData) {
+    return res.status(404).json({ error: "No document attached to this request" });
+  }
+
+  res.setHeader("Content-Type", result.documentType ?? "application/octet-stream");
+  res.setHeader("Content-Disposition", `inline; filename="${result.documentName ?? "document"}"`);
+  res.send(result.documentData);
 });
 
 const decisionSchema = z.object({
@@ -182,6 +267,7 @@ router.patch("/:id/manager-decision", requireRole("MANAGER", "ADMIN"), async (re
         },
       },
     },
+    select: fundRequestSelect,
   });
 
   res.json(updated);
@@ -214,6 +300,7 @@ router.patch("/:id/accountant-decision", requireRole("ACCOUNTANT", "ADMIN"), asy
         },
       },
     },
+    select: fundRequestSelect,
   });
 
   res.json(updated);
