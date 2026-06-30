@@ -59,17 +59,29 @@ router.post(
     if (!requester) {
       return res.status(404).json({ error: "User not found" });
     }
-    if (!requester.managerId) {
+
+    const isManager = requester.role === "MANAGER" || requester.role === "ADMIN";
+
+    if (!isManager && !requester.managerId) {
       return res.status(400).json({ error: "You have no assigned line manager. Ask an admin to set one before submitting requests." });
     }
 
     const { amount, currency, purpose, description, bankName, accountNumber, accountName } = parsed.data;
     const file = req.file;
 
+    // Managers and admins bypass manager approval — go straight to accountant
+    const initialStatus = isManager ? "PENDING_ACCOUNTANT" : "PENDING_MANAGER";
+    const initialEvents = isManager
+      ? [
+          { actorId: requester.id, action: "SUBMITTED" as const },
+          { actorId: requester.id, action: "MANAGER_APPROVED" as const },
+        ]
+      : [{ actorId: requester.id, action: "SUBMITTED" as const }];
+
     const fundRequest = await prisma.fundRequest.create({
       data: {
         requesterId: requester.id,
-        managerId: requester.managerId,
+        managerId: requester.managerId ?? requester.id,
         amount,
         currency,
         purpose,
@@ -80,9 +92,9 @@ router.post(
         documentName: file?.originalname,
         documentType: file?.mimetype,
         documentData: file?.buffer,
-        status: "PENDING_MANAGER",
+        status: initialStatus,
         approvalEvents: {
-          create: { actorId: requester.id, action: "SUBMITTED" },
+          create: initialEvents,
         },
       },
       select: fundRequestSelect,
