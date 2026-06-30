@@ -6,14 +6,6 @@ import { requireAuth, signToken } from "../middleware/auth";
 
 const router = Router();
 
-const isProd = process.env.NODE_ENV === "production";
-const cookieOptions = {
-  httpOnly: true,
-  sameSite: (isProd ? "none" : "lax") as "none" | "lax",
-  secure: isProd,
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-};
-
 router.get("/managers", async (_req, res) => {
   const managers = await prisma.user.findMany({
     where: { role: "MANAGER" },
@@ -56,8 +48,7 @@ router.post("/signup", async (req, res) => {
   });
 
   const token = signToken({ userId: user.id, role: user.role });
-  res.cookie("token", token, cookieOptions);
-  res.status(201).json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.status(201).json({ token, id: user.id, name: user.name, email: user.email, role: user.role });
 });
 
 const loginSchema = z.object({
@@ -82,12 +73,10 @@ router.post("/login", async (req, res) => {
   }
 
   const token = signToken({ userId: user.id, role: user.role });
-  res.cookie("token", token, cookieOptions);
-  res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
+  res.json({ token, id: user.id, name: user.name, email: user.email, role: user.role });
 });
 
 router.post("/logout", (_req, res) => {
-  res.clearCookie("token", cookieOptions);
   res.status(204).end();
 });
 

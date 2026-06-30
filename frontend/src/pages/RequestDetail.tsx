@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, API_BASE } from "../api/client";
+import { api, ApiError, fetchAuthorizedBlob } from "../api/client";
 import { FundRequestDetail } from "../types";
 import { StatusBadge } from "../components/StatusBadge";
 
@@ -9,6 +9,7 @@ export default function RequestDetail() {
   const [request, setRequest] = useState<FundRequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -18,6 +19,18 @@ export default function RequestDetail() {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
+
+  async function openDocument() {
+    if (!request) return;
+    setDocError(null);
+    try {
+      const { blob } = await fetchAuthorizedBlob(`/fund-requests/${request.id}/document`);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      setDocError(err instanceof ApiError ? err.message : "Failed to open document");
+    }
+  }
 
   if (loading) return <div className="page">Loading...</div>;
   if (error) return <div className="page error">{error}</div>;
@@ -76,9 +89,10 @@ export default function RequestDetail() {
           <p className="section-title" style={{ marginBottom: 8 }}>
             Supporting Document
           </p>
-          <a href={`${API_BASE}/fund-requests/${request.id}/document`} target="_blank" rel="noreferrer">
-            {request.documentName}
-          </a>
+          <button type="button" className="primary" onClick={openDocument}>
+            View {request.documentName}
+          </button>
+          {docError && <div className="error">{docError}</div>}
         </div>
       )}
 

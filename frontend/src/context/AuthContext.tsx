@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, clearToken, getToken, setToken } from "../api/client";
 
 export type Role = "STAFF" | "MANAGER" | "ACCOUNTANT" | "ADMIN";
 
@@ -9,6 +9,10 @@ export interface CurrentUser {
   email: string;
   role: Role;
   managerId: string | null;
+}
+
+interface AuthResponse extends CurrentUser {
+  token: string;
 }
 
 interface AuthContextValue {
@@ -33,11 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function refresh() {
+    if (!getToken()) {
+      setUser(null);
+      return;
+    }
     try {
       const me = await api.get<CurrentUser>("/auth/me");
       setUser(me);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
+        clearToken();
         setUser(null);
       } else {
         throw err;
@@ -50,8 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function login(email: string, password: string) {
-    const me = await api.post<CurrentUser>("/auth/login", { email, password });
-    setUser(me);
+    const res = await api.post<AuthResponse>("/auth/login", { email, password });
+    setToken(res.token);
+    setUser(res);
   }
 
   async function signup(
@@ -61,12 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     role: "STAFF" | "MANAGER" | "ACCOUNTANT",
     managerId?: string
   ) {
-    const me = await api.post<CurrentUser>("/auth/signup", { name, email, password, role, managerId });
-    setUser(me);
+    const res = await api.post<AuthResponse>("/auth/signup", { name, email, password, role, managerId });
+    setToken(res.token);
+    setUser(res);
   }
 
   async function logout() {
-    await api.post("/auth/logout");
+    clearToken();
     setUser(null);
   }
 
