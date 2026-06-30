@@ -27,6 +27,7 @@ const signupSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
   password: z.string().min(8),
+  role: z.enum(["STAFF", "MANAGER", "ACCOUNTANT"]).default("STAFF"),
   managerId: z.string().optional(),
 });
 
@@ -35,7 +36,7 @@ router.post("/signup", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: parsed.error.flatten() });
   }
-  const { name, email, password, managerId } = parsed.data;
+  const { name, email, password, role, managerId } = parsed.data;
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
@@ -51,7 +52,7 @@ router.post("/signup", async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { name, email, passwordHash, role: "STAFF", managerId },
+    data: { name, email, passwordHash, role, managerId },
   });
 
   const token = signToken({ userId: user.id, role: user.role });
