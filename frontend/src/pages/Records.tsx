@@ -91,7 +91,7 @@ export default function Records() {
         <p className="section-title">Search & Filter</p>
         <p className="section-sub">Find fund requests by requester, status, date range, or amount</p>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div className="search-grid">
           <div className="field">
             <label>Requester name</label>
             <input placeholder="e.g. Alice" value={name} onChange={(e) => setName(e.target.value)} />
